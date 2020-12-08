@@ -1,0 +1,38 @@
+{
+    "data_dir": {
+        "type": "str",
+        "default": "data/binaries"
+    },
+    "embedding_dim": {
+        "type": "int",
+        "default": 8
+    },
+    "conv_out_channels": {
+        "type": "int",
+        "default": 128
+    },
+    "kernel_size": {
+        "type": "int",
+        "default": 512
+    },
+    "stride": {
+        "type": "int",
+        "default": 512
+    },
+    "output_dim": {
+        "type": "int",
+        "default": 1
+    },
+    "first_n_byte": {
+        "type": "int",
+        "default": 1000000
+    },
+    "train_lr": {
+        "type": "float",
+        "default": 0.001
+    },
+    "num_train_epochs": {
+        "type": "int",
+        "default": 5
+    }
+}

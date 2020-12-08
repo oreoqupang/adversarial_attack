@@ -50,8 +50,8 @@ config = read_config('malconv.json')
 malconv = MalConv_markin(config).to(device)
 malconv.load_state_dict(torch.load('/home/choiwonseok/malconv.pt'))
 
-test_num = 5
-batch_size = 64
+test_num = 1
+batch_size = 4
 loop_num = 2
 first_n_byte = 1000000
 padding_limit = 10000
@@ -96,14 +96,13 @@ for bytez, ori_bytez, label, bytez_len in test_loader:
 
     outputs = malconv(embed)
     #loss = nn.CrossEntropyLoss()(outputs, lables)
-    loss = nn.BCEWithLogitsLoss()(outputs, lables)
     #malness = F.softmax(outputs, dim=-1)
     #result = torch.logical_and(malness[:,1] > 0.5, init_result)
-    result = torch.logical_and((nn.Sigmoid()(outputs) > 0.5).squeeze(), init_result)
-
+    loss = nn.BCEWithLogitsLoss()(outputs, lables)
+    result = (nn.Sigmoid()(outputs) > 0.5).squeeze()
     loss.backward()
     #back = bytez.clone()
-    do_attack(bytez, bytez_len, result, embed.grad)
+    do_attack(bytez, bytez_len, torch.logical_and(result, init_result), embed.grad)
     """
     for j in range(len(bytez)):
       if not(torch.equal(back[j, bytez_len[j]+padding_limit:], bytez[j, bytez_len[j]+padding_limit:]) and torch.equal(back[j, :bytez_len[j]], bytez[j, :bytez_len[j]])):
@@ -121,7 +120,16 @@ for bytez, ori_bytez, label, bytez_len in test_loader:
     """
 
   success_cnt += torch.count_nonzero(torch.logical_and(init_result, bytez_len.squeeze() < first_n_byte)) - torch.count_nonzero(torch.logical_and(result, bytez_len.squeeze() < first_n_byte))
-  
+  for i in range(batch_size):
+    if init_result[i] and bytez_len[i] < first_n_byte and result[i] == False:
+      padding_len = int(min(bytez_len[i] + padding_limit, first_n_byte) - bytez_len[i])
+      (bytez[i, :bytez_len[i]+padding_len]-1).cpu().detach().numpy().astype(np.int8).tofile(f"adv_{padding_len}_{i}", sep="")
+      (ori_bytez[i, :bytez_len[i]]-1).cpu().detach().numpy().astype(np.int8).tofile(f"origin_{padding_len}_{i}")
+      print(nn.Sigmoid()(init_outputs), nn.Sigmoid()(outputs))
+
+
+
+
 print("\n\n--------Test Reslut----------")
 print(f"Total Attack : {attack_cnt}")
 print(f"Success count : {success_cnt}")

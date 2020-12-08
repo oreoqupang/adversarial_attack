@@ -6,20 +6,21 @@ import sys
 import struct
 import os
 from src.MalConv import MalConv
-from src.markin_MalConv import MalConv_markin
-from src.util import *
+from src.util import ExeDataset
 from torch.utils.data import DataLoader
 
 
-def do_attack(bytez, bytez_len, result, gradient):
+def do_attack(bytez, bytez_len, result, gradient, a1, a2):
   for idx in range(len(bytez)):
     if result[idx] == False or int(bytez_len[idx]) >= first_n_byte: #classfied benign or no padding
       continue
 
     with torch.no_grad():
+      
       byte_len = int(bytez_len[idx])
       padding_len = min(byte_len + padding_limit, first_n_byte) - byte_len
       max_values = torch.tensor([[np.infty]*256]*padding_len, dtype=torch.float).to(device)
+      """
       padding = bytez[idx, byte_len:byte_len+padding_len]
 
       z = embedding(padding) # padding_len * 8
@@ -27,98 +28,82 @@ def do_attack(bytez, bytez_len, result, gradient):
       n = w / torch.norm(w, dim=1, p=2)[:, None] # padding_len * 8
 
       ss=torch.bmm(torch.stack([M]*padding_len, dim = 0)-z.unsqueeze(dim=1), n.unsqueeze(dim=2)).squeeze() # ss size = padding_len * 256
-      ds = torch.stack([M]*padding_len, dim = 0)-(torch.bmm(ss.view(padding_len, -1, 1), n.view(padding_len, 1, -1))+z.unsqueeze(dim=1))
-      ds = torch.norm(ds, dim = 2, p = 2)
-      if not (torch.equal( (torch.norm(w,dim=1,p=2) == 0) ,  torch.isnan(ds[:,0]))):
+      ds_1 = torch.stack([M]*padding_len, dim = 0)-(torch.bmm(ss.view(padding_len, -1, 1), n.view(padding_len, 1, -1))+z.unsqueeze(dim=1))
+      ds_2 = torch.cdist(z.unsqueeze(dim=1), torch.stack([M]*padding_len, dim=0)).squeeze(dim=1) #padding_len * 1 * 256
+      ds = torch.norm(ds_1, dim = 2, p = 2) * a1 + ds_2 * a2
+
+      if not (torch.equal( (torch.norm(w,dim=1,p=2) == 0), torch.isnan(ds[:,0]))):
         print("something wrong")
         sys.exit(-1)
 
       filtered_ds = torch.where(ss>0, ds, max_values)
-      ttmp = torch.where(torch.isnan(ds[:, 0]), padding, filtered_ds.argmin(dim=1)+1)
-      bytez[idx, byte_len:byte_len+padding_len] = ttmp
-      
-      #random_padding = torch.Tensor(np.random.randint(1, 257, padding_len))
-      #bytez[idx, byte_len:byte_len+padding_len] = random_padding
+      """
+      random_padding = torch.Tensor(np.random.randint(1, 257, padding_len))
+      bytez[idx, byte_len:byte_len+padding_len] = random_padding
+      #bytez[idx, byte_len:byte_len+padding_len] = torch.where(torch.isnan(ds[:, 0]), padding, filtered_ds.argmin(dim=1)+1)
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-#malconv = MalConv(channels=256, window_size=512, embd_size=8).to(device)
-#malconv.load_state_dict(torch.load(('./malconv.checkpoint'))['model_state_dict'])
-
-config = read_config('malconv.json')
-malconv = MalConv_markin(config).to(device)
-malconv.load_state_dict(torch.load('/home/choiwonseok/malconv.pt'))
+malconv = MalConv(channels=256, window_size=512, embd_size=8).to(device)
+malconv.load_state_dict(torch.load(('./malconv.checkpoint'))['model_state_dict'])
 
 test_num = 5
-batch_size = 64
+batch_size = 128
 loop_num = 2
 first_n_byte = 1000000
-padding_limit = 10000
+padding_limit = 500
 file_names = os.listdir('/home/choiwonseok/sample/malwares')
 
 test_loader = DataLoader(ExeDataset(file_names, "/home/choiwonseok/sample/malwares/", 
   [1]*len(file_names), padding_limit, first_n_byte),
   batch_size=batch_size, shuffle=True)
 
-#embedding = malconv.embd
-embedding = malconv.byte_embedding
+embedding = malconv.embd
 M = embedding(torch.arange(1, 257).to(device))
 
 test_cnt = 0
 attack_cnt = 0
 success_cnt = 0
 random_succ_cnt = 0
-lables = torch.tensor([[0.0]]*batch_size, dtype=torch.float).to(device)
+lables = torch.tensor([0]*batch_size, dtype=torch.long).to(device)
 
-for bytez, ori_bytez, label, bytez_len in test_loader:
+for bytez, label, bytez_len in test_loader:
   if test_cnt >= test_num:
     break
   test_cnt += 1
 
-  ori_bytez, bytez, label, bytez_len = ori_bytez.to(device), bytez.to(device), label.to(device), bytez_len.to(device)
+  bytez, label, bytez_len = bytez.to(device), label.to(device), bytez_len.to(device)
   
-  embed = embedding(ori_bytez).detach()
+  embed = embedding(bytez).detach()
+  embed.requires_grad = True
   init_outputs = malconv(embed)
-  #init_malness = F.softmax(init_outputs, dim=-1)
-  #init_result = init_malness[:,1] > 0.5
-  init_result = (nn.Sigmoid()(init_outputs) > 0.5).squeeze()
-
-
+  init_malness = F.softmax(init_outputs, dim=-1)
+  
+  loss = nn.CrossEntropyLoss()(init_outputs, lables)
+  init_result = init_malness[:,1] > 0.5
+  test_idx = None
+  
   print(f"Initial test({test_cnt}) result : {init_result}")
   for i in range(loop_num):
     print(f"try loop {i}")
     if i == 0:
       attack_cnt += torch.count_nonzero(torch.logical_and(init_result, bytez_len.squeeze() < first_n_byte))
+      result = init_result
+      loss.backward()
+
+    do_attack(bytez, bytez_len, result, embed.grad, 0.5, 0.5)
 
     embed = embedding(bytez).detach()
     embed.requires_grad = True
+    malconv.zero_grad()
 
     outputs = malconv(embed)
-    #loss = nn.CrossEntropyLoss()(outputs, lables)
-    loss = nn.BCEWithLogitsLoss()(outputs, lables)
-    #malness = F.softmax(outputs, dim=-1)
-    #result = torch.logical_and(malness[:,1] > 0.5, init_result)
-    result = torch.logical_and((nn.Sigmoid()(outputs) > 0.5).squeeze(), init_result)
-
-    loss.backward()
-    #back = bytez.clone()
-    do_attack(bytez, bytez_len, result, embed.grad)
-    """
-    for j in range(len(bytez)):
-      if not(torch.equal(back[j, bytez_len[j]+padding_limit:], bytez[j, bytez_len[j]+padding_limit:]) and torch.equal(back[j, :bytez_len[j]], bytez[j, :bytez_len[j]])):
-        print("fuck")
-        sys.exit(-1)
-
-    embed2 = embedding(back).detach()
-    embed2.requires_grad = True
-
-    outputs = malconv(embed2)
-    
     loss = nn.CrossEntropyLoss()(outputs, lables)
-    malness2 = F.softmax(outputs, dim=-1)
-    print(malness, malness2)
-    """
+    malness = F.softmax(outputs, dim=-1)
+    result = malness[:,1] > 0.5
+   
+    loss.backward()
 
   success_cnt += torch.count_nonzero(torch.logical_and(init_result, bytez_len.squeeze() < first_n_byte)) - torch.count_nonzero(torch.logical_and(result, bytez_len.squeeze() < first_n_byte))
   
@@ -127,8 +112,8 @@ print(f"Total Attack : {attack_cnt}")
 print(f"Success count : {success_cnt}")
 print(f"SR : {success_cnt/attack_cnt*100}%")
 
-with open(f"test_result({padding_limit})", "at") as output:
-  output.write("\n\n--------Test Reslut----------\n")
+with open(f"test_custom_result({padding_limit})", "wt") as output:
+  output.write("--------Test Reslut----------\n")
   output.write(f"Total Attack : {attack_cnt}\n")
   output.write(f"Success count : {success_cnt}\n")
   output.write(f"SR : {success_cnt/attack_cnt*100}%\n")
