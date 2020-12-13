@@ -2,6 +2,7 @@ import torch
 import json
 import numpy as np
 import struct
+import os
 import lief
 from torch.utils.data import Dataset
 from argparse import ArgumentParser
@@ -33,12 +34,18 @@ def insert_SLACK(target_bin, raw_bytes, ins_size):
     return np.insert(raw_bytes, ins_offset, np.random.randint(0, 256, ins_size)), ins_offset
 
 def find_SLACK(target_bin):
-    parsed = lief.parse(target_bin)
+    try:
+        parsed = lief.parse(target_bin)
+        file_len = os.stat(target_bin).st_size 
+    except Exception as e:
+        print("errrrrrr", e)
+        return torch.empty(0)
 
     target_idxs = []
     for section in parsed.sections:
         if section.size > section.virtual_size:
-            target_idxs.extend(list(range(section.offset+section.virtual_size, section.offset+section.size)))
+            end = min(file_len, section.offset+section.size)
+            target_idxs.extend(list(range(section.offset+section.virtual_size, end)))
 
     return torch.Tensor(target_idxs).long()
 

@@ -18,22 +18,21 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 #malconv.load_state_dict(torch.load(('./malconv.checkpoint'))['model_state_dict'])
 config = read_config('malconv.json')
 malconv = MalConv_markin(config).to(device)
-malconv.load_state_dict(torch.load('/home/choiwonseok/malconv.pt'))
+malconv.load_state_dict(torch.load('./malconv.pt'))
 
-test_num = 5
-batch_size = 64
+test_num = 30
+batch_size = 8
 first_n_byte = 1000000
 insert_size = 1000
 
-sample_dir = '/home/choiwonseok/sample/malwares/'
+sample_dir = 'D:\\sub74\\malwares\\'
 file_names = []
-for f in os.listdir('/home/choiwonseok/sample/malwares'):
+for f in os.listdir('D:\sub74\malwares'):
   location = os.path.join(sample_dir, f)
   if os.stat(location).st_size < first_n_byte-insert_size:
     file_names.append(f)
 
-sample_dir = '/home/choiwonseok/sample/malwares/'
-test_loader = DataLoader(InsertDataset(file_names, "/home/choiwonseok/sample/malwares/", 
+test_loader = DataLoader(InsertDataset(file_names, sample_dir, 
   insert_size, first_n_byte),
   batch_size=batch_size, shuffle=True)
 
@@ -57,11 +56,15 @@ for bytez, insert_offsets, ori_bytez, bytez_len in test_loader:
   init_result = target.get_result(init_outputs)
   print(f"Initial test({test_cnt}) result : {init_result}")
 
-  #init_result = torch.logical_and(init_result, bytez_len.squeeze() < first_n_byte)
+  target_idxs = []
+  for i in range(batch_size):
+    if init_result[i]:
+      target_idxs.append(torch.Tensor(list(range(insert_offsets[i], insert_offsets[i]+insert_size))).long())
+  
   attack_cnt += torch.count_nonzero(init_result)
   attack_bytez = bytez[init_result]
   
-  result = attack.do_slack_attack(attack_bytez, insert_offsets[init_result], insert_size, 0.7) 
+  result = attack.do_slack_attack(attack_bytez, target_idxs, 0.7) 
 
   success_cnt += (torch.count_nonzero(init_result) - torch.count_nonzero(result))
   

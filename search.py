@@ -11,35 +11,36 @@ from src.util import *
 from src.Target import Target
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+print(device)
 config = read_config('malconv.json')
 malconv = MalConv_markin(config).to(device)
-malconv.load_state_dict(torch.load('/home/choiwonseok/malconv.pt'))
+malconv.load_state_dict(torch.load('./malconv.pt'))
 
-test_num = 6
-batch_size = 64
+test_num = 50
+batch_size = 8
 loop_num = 1
 first_n_byte = 1000000
-padding_limit = 1000
-sample_dir = '/home/choiwonseok/sample/malwares/'
+padding_len = 1000
+sample_dir = 'D:\\sub74\\malwares\\'
 file_names = []
-for f in os.listdir('/home/choiwonseok/sample/malwares'):
+for f in os.listdir(sample_dir):
   location = os.path.join(sample_dir, f)
-  if os.stat(location).st_size < first_n_byte:
+  if os.stat(location).st_size < first_n_byte - padding_len:
     file_names.append(f)
 
-test_loader = DataLoader(ExeDataset(file_names, "/home/choiwonseok/sample/malwares/", 
-  [1]*len(file_names), padding_limit, first_n_byte),
+test_loader = DataLoader(AppendDataset(file_names, sample_dir, 
+    padding_len, first_n_byte),
   batch_size=batch_size, shuffle=True)
 
 target = Target(malconv, nn.BCEWithLogitsLoss(), F.relu, 0.5, first_n_byte)
-attack = CustomGradAppendAttack(target, padding_limit, malconv.byte_embedding, loop_num)
+attack = CustomGradAppendAttack(target, padding_len, malconv.byte_embedding, loop_num)
 
 def test_function(a, b):
     test_cnt = 0
     attack_cnt = 0
     success_cnt = 0
     
-    for bytez, ori_bytez, bytez_len in test_loader:
+    for bytez, ori_bytez, bytez_len, names in test_loader:
         if test_cnt >= test_num:
             break
         test_cnt += 1
@@ -64,8 +65,8 @@ def test_function(a, b):
 param_num  = 2
 low_limits = [1 for i in range(param_num)]
 high_limits = [100 for i in range(param_num)]
-sample_num = 100
-top_num = 10
+sample_num = 50
+top_num = 5
 T = 20
 
 for i in range(T):

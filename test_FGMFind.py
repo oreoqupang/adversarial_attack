@@ -18,24 +18,22 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 #malconv.load_state_dict(torch.load(('./malconv.checkpoint'))['model_state_dict'])
 config = read_config('malconv.json')
 malconv = MalConv_markin(config).to(device)
-malconv.load_state_dict(torch.load('/home/choiwonseok/malconv.pt'))
+malconv.load_state_dict(torch.load('./malconv.pt'))
 
-test_num = 5
-batch_size = 64
+test_num = 30
+batch_size = 8
 first_n_byte = 1000000
 
-sample_dir = '/home/choiwonseok/sample/malwares/'
+sample_dir = 'D:\\sub74\\malwares\\'
 file_names = []
-for f in os.listdir('/home/choiwonseok/sample/malwares'):
+for f in os.listdir('D:\\sub74\\malwares\\'):
   location = os.path.join(sample_dir, f)
   if os.stat(location).st_size < first_n_byte:
     file_names.append(f)
 
-sample_dir = '/home/choiwonseok/sample/malwares/'
-test_loader = DataLoader(AppendDataset(file_names, "/home/choiwonseok/sample/malwares/", 
+test_loader = DataLoader(AppendDataset(file_names, sample_dir, 
   0, first_n_byte),
   batch_size=batch_size, shuffle=True)
-
 
 target = Target(malconv, nn.BCEWithLogitsLoss(), F.relu, 0.5, first_n_byte)
 attack = FGMAttack(target, malconv.byte_embedding)
@@ -52,6 +50,7 @@ for bytez, ori_bytez, bytez_len, names in test_loader:
   ori_bytez, bytez, bytez_len = ori_bytez.to(device), bytez.to(device), bytez_len.to(device)
   
   embed = attack.embedding(ori_bytez).detach()
+  #print(embed[0])
   init_outputs = target.predict(embed)
   init_result = target.get_result(init_outputs)
   print(f"Initial test({test_cnt}) result : {init_result}")
@@ -69,7 +68,7 @@ for bytez, ori_bytez, bytez_len, names in test_loader:
   attack_bytez = bytez[init_result]
   print(len(attack_bytez), len(target_idxs))
     
-  result = attack.do_slack_attack(attack_bytez, target_idxs, 0.1) 
+  result = attack.do_slack_attack(attack_bytez, target_idxs, 1.2) 
   success_cnt += (torch.count_nonzero(init_result) - torch.count_nonzero(result))
   
 print("--------Test Reslut----------")
