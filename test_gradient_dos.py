@@ -11,36 +11,31 @@ from src.Target import Target
 from torch.utils.data import DataLoader
 from attack.Gradient import GradientAttack
 
-def no_func(a):
-  return a
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 test_config = read_config('test.json')
 malconv_config = read_config('malconv.json')
 
 
 #model1
-#model = MalConv1(channels=256, window_size=512, embd_size=8).to(device)
-#model.load_state_dict(torch.load('malconv.checkpoint')['model_state_dict'])
+model = MalConv1(channels=256, window_size=512, embd_size=8).to(device)
+model.load_state_dict(torch.load('malconv.checkpoint')['model_state_dict'])
 
 #model2
 #model = MalConv2().to(device)
 #model.load_state_dict(torch.load('pretrained_malconv.pth'))
 
 #model3
-model = MalConv3(malconv_config).to(device)
-model.load_state_dict(torch.load('./malconv.pt'))
+#model = MalConv3(malconv_config).to(device)
+#model.load_state_dict(torch.load('./malconv.pt'))
 
 model.eval()
 
 test_loader = DataLoader(AppendDataset(test_config),
   batch_size=test_config.batch_size, shuffle=True)
 target = Target(model, 0.5, test_config.first_n_byte)
-#target = Target(model, nn.BCEWithLogitsLoss(), no_func, 0.5, test_config.first_n_byte)
 
-attack = GradientAttack(target, test_config.padding_len, model.get_embedding(), test_config.loop_num, 0)
-#attack = FGMAppendAttack(target, padding_limit, malconv.byte_embedding)
-#attack = CustomGradAppendAttack(target, padding_limit, malconv.byte_embedding, loop_num)
+
+attack = GradientAttack(target, test_config.padding_len, model.get_embedding(), test_config.loop_num, test_config.padding_value)
 
 test_cnt = 0
 attack_cnt = 0
@@ -58,11 +53,9 @@ for bytez, ori_bytez, bytez_len, names in test_loader:
   init_result = target.get_result(init_outputs)
   print(f"Initial test({test_cnt}) result : {init_result}")
 
-  
   attack_cnt += torch.count_nonzero(init_result)
   attack_bytez = bytez[init_result]
-  print(attack_bytez.size(), attack_cnt)
-  result = attack.do_append_attack(attack_bytez, bytez_len[init_result]) 
+  result = attack.do_header_attack(attack_bytez, bytez_len[init_result]) 
 
   success_cnt += (torch.count_nonzero(init_result) - torch.count_nonzero(result))
   
@@ -72,7 +65,7 @@ print(f"Success count : {success_cnt}")
 print(f"SR : {success_cnt/attack_cnt*100}%")
 
 with open(f"result/{test_config.test_name}({test_config.padding_len})", "at") as output:
-  output.write("--------Test Reslut----------\n")
+  output.write(f"--------Test Reslut({test_config.loop_num})----------\n")
   output.write(f"Total Attack : {attack_cnt}\n")
   output.write(f"Success count : {success_cnt}\n")
   output.write(f"SR : {success_cnt/attack_cnt*100}%\n\n\n")

@@ -4,12 +4,14 @@ from secml.array import CArray
 from secml_malware.models.malconv import MalConv
 from secml_malware.models.c_classifier_end2end_malware import CClassifierEnd2EndMalware, End2EndModel
 from secml_malware.attack.whitebox.c_padding_evasion import CPaddingEvasion
+from secml_malware.attack.whitebox.c_header_evasion import CHeaderEvasion
 
 net = MalConv()
 net = CClassifierEnd2EndMalware(net)
 net.load_pretrained_model()
 
-padding_attack = CPaddingEvasion(net, 2000, iterations=20)
+padding_attack = CPaddingEvasion(net, 1000, iterations=1)
+header_attack = CHeaderEvasion(net, random_init=False, iterations=20, optimize_all_dos=False, threshold=0.5)
 folder = "../sample/malwares"
 X = []
 y = []
@@ -36,12 +38,12 @@ for i, f in enumerate(os.listdir(folder)):
     y.append([1 - conf, conf])
     file_names.append(path)
     cnt+=1
-    if cnt >= 2000:
+    if cnt >= 200:
         break
 
 success=0
 for sample, label in zip(X, y):
-    y_pred, adv_score, adv_ds, f_obj = padding_attack.run(CArray(sample), CArray(label[1]))
+    y_pred, adv_score, adv_ds, f_obj = header_attack.run(CArray(sample), CArray(label[1]))
     if adv_score[0] < 0.5:
         success+=1
 print(f"{success}, rate:{success/200}")

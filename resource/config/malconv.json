@@ -1,7 +1,11 @@
 {
     "data_dir": {
         "type": "str",
-        "default": "data/binaries"
+        "default": "/home/ubuntu/workspace/malconv/data/binaries/test/"
+    },
+    "model_name": {
+        "type": "str",
+        "default": "Malconv3"
     },
     "embedding_dim": {
         "type": "int",

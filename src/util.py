@@ -4,6 +4,8 @@ import numpy as np
 import struct
 import os
 import lief
+import random
+import pandas as pd
 from torch.utils.data import Dataset
 from argparse import ArgumentParser
 
@@ -60,6 +62,39 @@ def read_config(config_filepath):
     config, _ = parser.parse_known_args()
     return config
 
+class PEDataset(Dataset):
+    def __init__(self, data_path, sample_num, first_n_byte, padding_value=0):
+        self.data_path = data_path
+        self.fp_list = random.sample(os.listdir(data_path), sample_num)
+        #self.labels = pd.read_csv('resource/total.csv').set_index(['name'])
+        self.labels = pd.read_csv('resource/labels.csv').set_index(['hash'])
+        self.first_n_byte = first_n_byte
+        self.padding_value = padding_value
+        if padding_value == 256:
+            self.bias = 0
+        else:
+            self.bias = 1
+
+    def __len__(self):
+        return len(self.fp_list)
+
+    def __getitem__(self, idx):
+        #class_label = self.labels.loc[self.fp_list[idx]]['is_malware']
+        class_label = self.labels.loc[self.fp_list[idx].split('.')[0]]['is_malware']
+
+        with open(self.data_path+self.fp_list[idx],'rb') as f:
+            origin = np.array([i+self.bias for i in f.read()[:self.first_n_byte]])
+            origin_len = origin.size
+            
+            if self.padding_value == 0:
+                origin = np.concatenate((origin, np.zeros(self.first_n_byte-origin_len)), axis=0)     
+            else:
+                origin  = np.concatenate((origin, np.ones(self.first_n_byte-origin_len, dtype=np.uint16)*self.padding_value), axis=0)
+        return torch.Tensor(origin).long(), torch.Tensor([class_label]).long()
+
+    
+        
+
 class InsertDataset(Dataset):
     def __init__(self, fp_list, data_path, insert_size, first_n_byte=1000000):
         self.fp_list = fp_list
@@ -86,21 +121,37 @@ class InsertDataset(Dataset):
 
 
 class AppendDataset(Dataset):
-    def __init__(self, fp_list, data_path, padding_len, first_n_byte=1000000):
-        self.fp_list = fp_list
-        self.data_path = data_path
-        self.padding_len = padding_len
-        self.first_n_byte = first_n_byte
+    def __init__(self, config):
+        file_names = []
+        for f in os.listdir(config.sample_dir):
+            location = os.path.join(config.sample_dir, f)
+            if os.stat(location).st_size < config.first_n_byte - config.padding_len:
+                file_names.append(f)
+
+        self.fp_list = file_names
+        self.data_path = config.sample_dir
+        self.padding_len = config.padding_len
+        self.first_n_byte = config.first_n_byte
+        self.padding_value = config.padding_value
+
+        if config.padding_value == 0:
+            self.bias = 1
+        else:
+            self.bias = 0
 
     def __len__(self):
         return len(self.fp_list)
 
     def __getitem__(self, idx):
         with open(self.data_path+self.fp_list[idx],'rb') as f:
-            origin = np.array([i+1 for i in f.read()])
+            origin = np.array([i+self.bias for i in f.read()])
             origin_len = origin.size
 
-            tmp = np.concatenate((origin, np.zeros(self.first_n_byte-origin_len)), axis=0)
-            adv = np.concatenate((origin, np.random.randint(1, 257, self.padding_len), np.zeros(self.first_n_byte-origin_len-self.padding_len)), axis=0 )
+            if self.padding_value == 0:
+                tmp = np.concatenate((origin, np.zeros(self.first_n_byte-origin_len)), axis=0)
+                adv = np.concatenate((origin, np.random.randint(1, 257, self.padding_len), np.zeros(self.first_n_byte-origin_len-self.padding_len)), axis=0 )
+            else:
+                tmp = np.concatenate((origin, np.ones(self.first_n_byte-origin_len, dtype=np.uint16)*self.padding_value), axis=0)
+                adv = np.concatenate((origin, np.random.randint(0, 256, self.padding_len), np.ones(self.first_n_byte-origin_len-self.padding_len, dtype=np.uint16)*self.padding_value), axis=0)
 
         return torch.Tensor(adv).long(), torch.Tensor(tmp).long(), torch.Tensor([origin_len]).long(), self.data_path+self.fp_list[idx]

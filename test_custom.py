@@ -21,15 +21,15 @@ config = read_config('malconv.json')
 malconv = MalConv_markin(config).to(device)
 malconv.load_state_dict(torch.load('./malconv.pt'))
 
-test_num = 50
-batch_size = 8
+test_num = 10
+batch_size = 64
 loop_num = 1
 first_n_byte = 1000000
 padding_len = 1000
-params =   [68.9,  7.8]
-sample_dir =  'D:\\sub74\\malwares\\'
+params =  (66.6, 2.2) #(78.2, 8.8) #[68.9,  7.8]
+sample_dir =  '/home/choiwonseok/sample/malwares/'
 file_names = []
-for f in os.listdir('D:\\sub74\\malwares\\'):
+for f in os.listdir(sample_dir):
   location = os.path.join(sample_dir, f)
   if os.stat(location).st_size < first_n_byte - padding_len:
     file_names.append(f)
@@ -69,7 +69,7 @@ print(f"Total Attack : {attack_cnt}")
 print(f"Success count : {success_cnt}")
 print(f"SR : {success_cnt/attack_cnt*100}%")
 
-with open(f"test_result({padding_len}_custom)", "at") as output:
+with open(f"result/test_result({padding_len}_custom)", "at") as output:
   output.write(f"--------Test Reslut({params})----------\n")
   output.write(f"Total Attack : {attack_cnt}\n")
   output.write(f"Success count : {success_cnt}\n")

@@ -3,14 +3,20 @@ import torch
 device =  torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class FGMAttack:
-    def __init__(self, target, embedding):
+    def __init__(self, target, embedding, padding_value=0):
         self.target = target
         self.embedding = embedding
+        self.padding_value = padding_value
 
-        self.M = embedding(torch.arange(1, 257).to(device))
+        if padding_value == 0:
+            self.M = embedding(torch.arange(1, 257).to(device))
+            self.bias = 1
+        else:
+            self.M = embedding(torch.arange(0, 256).to(device))
+            self.bias = 0
 
     def embedding_Mapping(self, embed_x):
-        shortest_bytes = torch.argmin(torch.cdist(embed_x, self.M, p = 2), dim=-1)+1
+        shortest_bytes = torch.argmin(torch.cdist(embed_x, self.M, p = 2), dim=-1)+self.bias
         return shortest_bytes
 
     def do_append_attack(self, bytez, bytez_len, padding_len, eps):
@@ -18,8 +24,8 @@ class FGMAttack:
         embed.requires_grad = True
 
         outputs = self.target.predict(embed)
-        labels = torch.zeros_like(outputs).to(device)
-        loss = self.target.loss_function(outputs, labels)
+        
+        loss = self.target.get_loss(outputs)
         loss.backward()
 
         grads = embed.grad
