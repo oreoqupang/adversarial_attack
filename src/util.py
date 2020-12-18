@@ -92,30 +92,44 @@ class PEDataset(Dataset):
                 origin  = np.concatenate((origin, np.ones(self.first_n_byte-origin_len, dtype=np.uint16)*self.padding_value), axis=0)
         return torch.Tensor(origin).long(), torch.Tensor([class_label]).long()
 
-    
-        
 
 class InsertDataset(Dataset):
-    def __init__(self, fp_list, data_path, insert_size, first_n_byte=1000000):
-        self.fp_list = fp_list
-        self.data_path = data_path
-        self.insert_size = insert_size
-        self.first_n_byte = first_n_byte
+    def __init__(self, config):
+        file_names = []
+        for f in os.listdir(config.sample_dir):
+            location = os.path.join(config.sample_dir, f)
+            if os.stat(location).st_size < config.first_n_byte - config.padding_len:
+                file_names.append(f)
+        
+        self.fp_list = file_names
+        self.data_path = config.sample_dir
+        self.insert_size = config.padding_len
+        self.first_n_byte = config.first_n_byte
+        self.padding_value = config.padding_value
+
+        if config.padding_value == 0:
+            self.bias = 1
+        else:
+            self.bias = 0
 
     def __len__(self):
         return len(self.fp_list)
 
     def __getitem__(self, idx):
         with open(self.data_path+self.fp_list[idx],'rb') as f:
-            origin = np.array([i+1 for i in f.read()[:self.first_n_byte]])
+            origin = np.array([i+self.bias for i in f.read()[:self.first_n_byte]])
             origin_len = origin.size
             
-            adv = np.subtract(origin, np.ones_like(origin))
+            adv = np.subtract(origin, np.ones_like(origin)*self.bias)
             adv, insert_offset = insert_SLACK(self.data_path+self.fp_list[idx], adv, self.insert_size)
-            adv = np.add(adv, np.ones_like(adv))
+            adv = np.add(adv, np.ones_like(adv)*self.bias)
             
-            origin = np.concatenate((origin, np.zeros(self.first_n_byte-origin_len)), axis=0)     
-            adv = np.concatenate( (adv, np.zeros(self.first_n_byte-len(adv))), axis=0 )
+            if self.padding_value == 0:
+                origin = np.concatenate((origin, np.zeros(self.first_n_byte-origin_len)), axis=0)
+                adv = np.concatenate( (adv, np.zeros(self.first_n_byte-len(adv))), axis=0 )
+            else:
+                origin = np.concatenate((origin, np.ones(self.first_n_byte-origin_len, dtype=np.uint16)*self.padding_value), axis=0)
+                adv = np.concatenate((adv, np.ones(self.first_n_byte-len(adv), dtype=np.uint16)*self.padding_value), axis=0)
 
         return torch.Tensor(adv).long(), torch.Tensor([insert_offset]).long(), torch.Tensor(origin).long(), torch.Tensor([origin_len]).long()
 

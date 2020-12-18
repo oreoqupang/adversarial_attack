@@ -39,14 +39,17 @@ malconv_config = read_config('malconv.json')
 #model1
 #model = MalConv1(channels=256, window_size=512, embd_size=8).to(device)
 #model.load_state_dict(torch.load('malconv.checkpoint')['model_state_dict'])
+#eps = 5.67
 
 #model2
 #model = MalConv2().to(device)
 #model.load_state_dict(torch.load('pretrained_malconv.pth'))
+#eps = 0.24
 
 #model3
 model = MalConv3(malconv_config).to(device)
 model.load_state_dict(torch.load('./malconv.pt'))
+eps = 2.7
 
 model.eval()
 test_loader = DataLoader(AppendDataset(test_config),
@@ -75,7 +78,7 @@ for bytez, ori_bytez, bytez_len, names in test_loader:
   attack_cnt += torch.count_nonzero(init_result)
   attack_bytez = bytez[init_result]
   
-  result = attack.do_append_attack(attack_bytez, bytez_len[init_result], test_config.padding_len, 0.9) 
+  result = attack.do_append_attack(attack_bytez, bytez_len[init_result], test_config.padding_len, eps) 
 
   success_cnt += (torch.count_nonzero(init_result) - torch.count_nonzero(result))
   
@@ -85,10 +88,8 @@ print(f"Total Attack : {attack_cnt}")
 print(f"Success count : {success_cnt}")
 print(f"SR : {success_cnt/attack_cnt*100}%")
 
-"""
-with open(f"test_FGM_result({padding_len})", "wt") as output:
-  output.write("--------Test Reslut----------\n")
+with open(f"result/{test_config.test_name}({test_config.padding_len})", "at") as output:
+  output.write(f"\n--------Test Reslut----------\n")
   output.write(f"Total Attack : {attack_cnt}\n")
   output.write(f"Success count : {success_cnt}\n")
   output.write(f"SR : {success_cnt/attack_cnt*100}%\n")
-  """

@@ -11,9 +11,6 @@ from src.Target import Target
 from torch.utils.data import DataLoader
 from attack.Gradient import GradientAttack
 
-def no_func(a):
-  return a
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 test_config = read_config('test.json')
 malconv_config = read_config('malconv.json')
@@ -36,11 +33,8 @@ model.eval()
 test_loader = DataLoader(AppendDataset(test_config),
   batch_size=test_config.batch_size, shuffle=True)
 target = Target(model, 0.5, test_config.first_n_byte)
-#target = Target(model, nn.BCEWithLogitsLoss(), no_func, 0.5, test_config.first_n_byte)
 
 attack = GradientAttack(target, test_config.padding_len, model.get_embedding(), test_config.loop_num, 0)
-#attack = FGMAppendAttack(target, padding_limit, malconv.byte_embedding)
-#attack = CustomGradAppendAttack(target, padding_limit, malconv.byte_embedding, loop_num)
 
 test_cnt = 0
 attack_cnt = 0
@@ -71,8 +65,8 @@ print(f"Total Attack : {attack_cnt}")
 print(f"Success count : {success_cnt}")
 print(f"SR : {success_cnt/attack_cnt*100}%")
 
-with open(f"result/{test_config.test_name}({test_config.padding_len})", "at") as output:
-  output.write("--------Test Reslut----------\n")
+with open(f"result/{test_config.test_name}", "at") as output:
+  output.write(f"--------Test Reslut({test_config.loop_num})----------\n")
   output.write(f"Total Attack : {attack_cnt}\n")
   output.write(f"Success count : {success_cnt}\n")
   output.write(f"SR : {success_cnt/attack_cnt*100}%\n\n\n")

@@ -13,7 +13,7 @@
     },
     "loop_num": {
         "type": "int",
-        "default": 50
+        "default": 2
     },
     "first_n_byte": {
         "type": "int",
@@ -21,7 +21,7 @@
     },
     "padding_len": {
         "type": "int",
-        "default": 0
+        "default": 1000
     },
     "padding_value": {
         "type": "int",
@@ -29,5 +29,5 @@
     },
     "test_name": {
         "type": "str",
-        "default": "DOS_Malconv1"    }
+        "default": "Gradient_Malconv3_T"    }
 }

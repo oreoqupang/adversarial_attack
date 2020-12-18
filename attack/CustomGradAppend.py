@@ -6,13 +6,19 @@ import sys
 device =  torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class CustomGradAppendAttack:
-    def __init__(self, target, padding_limit, embedding, iter_num):
+    def __init__(self, target, padding_limit, embedding, iter_num, padding_value=0):
         self.target = target
         self.embedding = embedding
         self.padding_limit = padding_limit
         self.iter_num = iter_num
+        self.padding_value = padding_value
 
-        self.M = embedding(torch.arange(1, 257).to(device))
+        if padding_value == 0:
+            self.M = embedding(torch.arange(1, 257).to(device))
+            self.bias = 1
+        else:
+            self.M = embedding(torch.arange(0, 256).to(device))
+            self.bias = 0
 
     def update_bytes(self, bytez, bytez_len, gradient, result, params):
         for idx in range(len(bytez)):
@@ -31,14 +37,15 @@ class CustomGradAppendAttack:
 
                 ss = torch.bmm(torch.stack([self.M]*padding_len, dim = 0)-z.unsqueeze(dim=1), n.unsqueeze(dim=2)).squeeze() # ss size = padding_len * 256
                 ds_1 = torch.stack([self.M]*padding_len, dim = 0)-(torch.bmm(ss.view(padding_len, -1, 1), n.view(padding_len, 1, -1))+z.unsqueeze(dim=1))
-                ds_2 = torch.cdist(z.unsqueeze(dim=1), torch.stack([self.M]*padding_len, dim=0)).squeeze(dim=1) #padding_len * 1 * 256
-                ds = torch.norm(ds_1, dim = 2, p = 2) * params[0] + ds_2 * params[1]
+                #ds_2 = torch.cdist(z.unsqueeze(dim=1), torch.stack([self.M]*padding_len, dim=0)).squeeze(dim=1) #padding_len * 1 * 256
+                #ds = torch.norm(ds_1, dim = 2, p = 2) * params[0] + ds_2 * params[1]
+                ds = torch.norm(ds_1, dim = 2, p = 2) * params[0] + ss * params[1]
                 if not (torch.equal( (torch.norm(w,dim=1,p=2) == 0) ,  torch.isnan(ds[:,0]))):
                     print("something wrong")
                     continue
 
                 filtered_ds = torch.where(ss>0, ds, max_values)
-                ttmp = torch.where(torch.isnan(ds[:, 0]), padding, filtered_ds.argmin(dim=1)+1)
+                ttmp = torch.where(torch.isnan(ds[:, 0]), padding, filtered_ds.argmin(dim=1)+self.bias)
                 bytez[idx, byte_len:byte_len+padding_len] = ttmp
             
 
@@ -49,14 +56,15 @@ class CustomGradAppendAttack:
 
             outputs = self.target.predict(embed)
         
-            labels = torch.zeros_like(outputs).to(device)
-            loss = self.target.loss_function(outputs, labels)
+            loss = self.target.get_loss(outputs)
             loss.backward()
 
             result = self.target.get_result(outputs)
             grads = embed.grad
+            
             self.update_bytes(bytez, bytez_len, grads, result, params)
         
         embed = self.embedding(bytez).detach()
         final_outputs = self.target.predict(embed)
         return self.target.get_result(final_outputs)
+

@@ -47,8 +47,8 @@ class FGMAttack:
         embed.requires_grad = True
 
         outputs = self.target.predict(embed)
-        labels = torch.zeros_like(outputs).to(device)
-        loss = self.target.loss_function(outputs, labels)
+        
+        loss = self.target.get_loss(outputs)
         loss.backward()
 
         grads = embed.grad

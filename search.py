@@ -6,34 +6,33 @@ import torch.nn as nn
 import numpy as np
 import os
 from attack.CustomGradAppend import CustomGradAppendAttack
-from src.markin_MalConv import MalConv_markin
+from src.MalConv import MalConv1, MalConv2, MalConv3
 from src.util import *
 from src.Target import Target
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(device)
-config = read_config('malconv.json')
-malconv = MalConv_markin(config).to(device)
-malconv.load_state_dict(torch.load('./malconv.pt'))
+test_config = read_config('test.json')
+malconv_config = read_config('malconv.json')
 
-test_num = 10
-batch_size = 64
-loop_num = 1
-first_n_byte = 1000000
-padding_len = 1000
-sample_dir = '/home/choiwonseok/sample/malwares/'
-file_names = []
-for f in os.listdir(sample_dir):
-  location = os.path.join(sample_dir, f)
-  if os.stat(location).st_size < first_n_byte - padding_len:
-    file_names.append(f)
+#model1
+#model = MalConv1(channels=256, window_size=512, embd_size=8).to(device)
+#model.load_state_dict(torch.load('malconv.checkpoint')['model_state_dict'])
 
-test_loader = DataLoader(AppendDataset(file_names, sample_dir, 
-    padding_len, first_n_byte),
-  batch_size=batch_size, shuffle=True)
+#model2
+#model = MalConv2().to(device)
+#model.load_state_dict(torch.load('pretrained_malconv.pth'))
 
-target = Target(malconv, nn.BCEWithLogitsLoss(), F.relu, 0.5, first_n_byte)
-attack = CustomGradAppendAttack(target, padding_len, malconv.byte_embedding, loop_num)
+#model3
+model = MalConv3(malconv_config).to(device)
+model.load_state_dict(torch.load('./malconv.pt'))
+
+model.eval()
+
+test_loader = DataLoader(AppendDataset(test_config),
+  batch_size=test_config.batch_size, shuffle=True)
+
+target = target = Target(model, 0.5, test_config.first_n_byte)
+attack = CustomGradAppendAttack(target, test_config.padding_len, model.get_embedding(), test_config.loop_num)
 
 def test_function(a, b):
     test_cnt = 0
@@ -41,7 +40,7 @@ def test_function(a, b):
     success_cnt = 0
     
     for bytez, ori_bytez, bytez_len, names in test_loader:
-        if test_cnt >= test_num:
+        if test_cnt >= test_config.test_num:
             break
         test_cnt += 1
 
@@ -94,5 +93,5 @@ for i in range(T):
             high_limits[i] = candi_high_limits[i]
 
     print(low_limits, high_limits)
-    with open("result/searching_log", "at") as f:
+    with open("result/searching_log_4", "at") as f:
         f.write(f"\n\n{low_limits}, {high_limits}")
