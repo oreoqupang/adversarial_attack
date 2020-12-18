@@ -130,3 +130,6 @@ dmypy.json
 
 #test_file
 test_result*
+result/
+eval_result
+.vscode/
